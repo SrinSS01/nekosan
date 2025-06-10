@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 )
 
 // --- Configuration ---
@@ -71,16 +72,25 @@ type DiscordInteractionResponse struct {
 	Data *DiscordInteractionResponseData `json:"data,omitempty"` // Data for the response (optional)
 }
 
+// DiscordAttachment represents a file attachment
+type DiscordAttachment struct {
+	Id          int    `json:"id"`
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+	Bytes       []byte `json:"-"` // Not sent directly in JSON
+}
+
 type DiscordInteractionResponseData struct {
-	Content         string        `json:"content,omitempty"`          // Message content
-	Flags           int           `json:"flags,omitempty"`            // Message flags (e.g., 64 for EPHEMERAL)
-	TTS             bool          `json:"tts,omitempty"`              // Text-to-speech
-	Embeds          []interface{} `json:"embeds,omitempty"`           // Embeds (use proper structs later)
-	AllowedMentions interface{}   `json:"allowed_mentions,omitempty"` // Allowed mentions
-	Components      []interface{} `json:"components,omitempty"`       // Message components (buttons, select menus)
-	Choices         []interface{} `json:"choices,omitempty"`          // Autocomplete choices
-	CustomID        string        `json:"custom_id,omitempty"`        // Modal custom ID
-	Title           string        `json:"title,omitempty"`            // Modal title
+	Content         string              `json:"content,omitempty"`          // Message content
+	Flags           int                 `json:"flags,omitempty"`            // Message flags (e.g., 64 for EPHEMERAL)
+	TTS             bool                `json:"tts,omitempty"`              // Text-to-speech
+	Embeds          []interface{}       `json:"embeds,omitempty"`           // Embeds (use proper structs later)
+	AllowedMentions interface{}         `json:"allowed_mentions,omitempty"` // Allowed mentions
+	Components      []interface{}       `json:"components,omitempty"`       // Message components (buttons, select menus)
+	Choices         []interface{}       `json:"choices,omitempty"`          // Autocomplete choices
+	CustomID        string              `json:"custom_id,omitempty"`        // Modal custom ID
+	Title           string              `json:"title,omitempty"`            // Modal title
+	Attachments     []DiscordAttachment `json:"attachments,omitempty"`      // File attachments
 }
 
 // init is called when the function is initialized. Use it for setup.
@@ -200,11 +210,54 @@ func DiscordInteractionsHandler(w http.ResponseWriter, r *http.Request) {
 
 		fmt.Println("Received APPLICATION_COMMAND interaction.")
 		// Respond with a simple ephemeral message
+		// First, get the cat image URL
+		catResp, err := http.Get("https://api.thecatapi.com/v1/images/search?size=small&mime_types=jpg&format=src&order=RANDOM")
+		if err != nil {
+			fmt.Printf("Error fetching cat image: %v\n", err)
+			response := DiscordInteractionResponse{
+				Type: InteractionResponseTypeChannelMessageWithSource,
+				Data: &DiscordInteractionResponseData{
+					Content: "Failed to fetch cat image :(",
+					Flags:   MessageFlagEphemeral,
+				},
+			}
+			sendJSONResponse(w, response, http.StatusOK)
+			return
+		}
+		defer func(Body io.ReadCloser) {
+			err := Body.Close()
+			if err != nil {
+				fmt.Printf("Error closing body: %v\n", err)
+			}
+		}(catResp.Body)
+
+		// Read the image data
+		imageData, err := io.ReadAll(catResp.Body)
+		if err != nil {
+			fmt.Printf("Error reading image data: %v\n", err)
+			response := DiscordInteractionResponse{
+				Type: InteractionResponseTypeChannelMessageWithSource,
+				Data: &DiscordInteractionResponseData{
+					Content: "Failed to read cat image :(",
+					Flags:   MessageFlagEphemeral,
+				},
+			}
+			sendJSONResponse(w, response, http.StatusOK)
+			return
+		}
+
 		response := DiscordInteractionResponse{
 			Type: InteractionResponseTypeChannelMessageWithSource,
 			Data: &DiscordInteractionResponseData{
-				Content: "MEOW MEOW",
-				Flags:   MessageFlagEphemeral | MessageFlagUrgent, // EPHEMERAL flag
+				Content: "Here's your cat! :cat:",
+				Attachments: []DiscordAttachment{
+					{
+						Id:          0,
+						Filename:    fmt.Sprintf("cat_%d.jpg", time.Now().Unix()),
+						ContentType: "image/jpeg",
+						Bytes:       imageData,
+					},
+				},
 			},
 		}
 		sendJSONResponse(w, response, http.StatusOK) // Use helper to send JSON
