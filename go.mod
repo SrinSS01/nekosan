@@ -1,4 +1,4 @@
-module nekosan
+module me.srin/nekosan
 
 go 1.24
 
