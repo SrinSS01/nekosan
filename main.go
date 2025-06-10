@@ -1,17 +1,14 @@
 package nekosan
 
 import (
-	"bytes"
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/GoogleCloudPlatform/functions-framework-go/functions"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"os"
-	"time"
 )
 
 // --- Configuration ---
@@ -74,25 +71,16 @@ type DiscordInteractionResponse struct {
 	Data *DiscordInteractionResponseData `json:"data,omitempty"` // Data for the response (optional)
 }
 
-// DiscordAttachment represents a file attachment
-type DiscordAttachment struct {
-	Id          int    `json:"id"`
-	Filename    string `json:"filename"`
-	ContentType string `json:"content_type"`
-	Bytes       []byte `json:"-"` // Not sent directly in JSON
-}
-
 type DiscordInteractionResponseData struct {
-	Content         string              `json:"content,omitempty"`          // Message content
-	Flags           int                 `json:"flags,omitempty"`            // Message flags (e.g., 64 for EPHEMERAL)
-	TTS             bool                `json:"tts,omitempty"`              // Text-to-speech
-	Embeds          []interface{}       `json:"embeds,omitempty"`           // Embeds (use proper structs later)
-	AllowedMentions interface{}         `json:"allowed_mentions,omitempty"` // Allowed mentions
-	Components      []interface{}       `json:"components,omitempty"`       // Message components (buttons, select menus)
-	Choices         []interface{}       `json:"choices,omitempty"`          // Autocomplete choices
-	CustomID        string              `json:"custom_id,omitempty"`        // Modal custom ID
-	Title           string              `json:"title,omitempty"`            // Modal title
-	Attachments     []DiscordAttachment `json:"attachments,omitempty"`      // File attachments
+	Content         string        `json:"content,omitempty"`          // Message content
+	Flags           int           `json:"flags,omitempty"`            // Message flags (e.g., 64 for EPHEMERAL)
+	TTS             bool          `json:"tts,omitempty"`              // Text-to-speech
+	Embeds          []interface{} `json:"embeds,omitempty"`           // Embeds (use proper structs later)
+	AllowedMentions interface{}   `json:"allowed_mentions,omitempty"` // Allowed mentions
+	Components      []interface{} `json:"components,omitempty"`       // Message components (buttons, select menus)
+	Choices         []interface{} `json:"choices,omitempty"`          // Autocomplete choices
+	CustomID        string        `json:"custom_id,omitempty"`        // Modal custom ID
+	Title           string        `json:"title,omitempty"`            // Modal title
 }
 
 // init is called when the function is initialized. Use it for setup.
@@ -207,33 +195,18 @@ func DiscordInteractionsHandler(w http.ResponseWriter, r *http.Request) {
 	// If it's any other type (like APPLICATION_COMMAND), handle accordingly
 	// This is where you'd add logic for Slash Commands, Button clicks, etc.
 	if interaction.Type == InteractionTypeApplicationCommand {
-		deferResponse := DiscordInteractionResponse{
-			Type: InteractionResponseTypeDeferredChannelMessageWithSource,
+		// You would typically unmarshal interaction.Data here into a specific
+		// command structure to get options etc. For now, just acknowledge.
+
+		fmt.Println("Received APPLICATION_COMMAND interaction.")
+		// Respond with a simple ephemeral message
+		response := DiscordInteractionResponse{
+			Type: InteractionResponseTypeChannelMessageWithSource,
+			Data: &DiscordInteractionResponseData{
+				Content: "https://api.thecatapi.com/v1/images/search?size=small&mime_types=jpg&format=src&order=RANDOM",
+			},
 		}
-		sendJSONResponse(w, deferResponse, http.StatusOK)
-		// Create a new HTTP client with a timeout
-		client := &http.Client{
-			Timeout: 10 * time.Second,
-		}
-		go func() {
-			catResp, err := client.Get("https://api.thecatapi.com/v1/images/search?size=small&mime_types=jpg&format=src&order=RANDOM")
-			if err != nil {
-				sendFollowupMessage(interaction.Token, "Failed to fetch cat image :(")
-				return
-			}
-			defer catResp.Body.Close()
-
-			// Read the image data
-			imageData, err := io.ReadAll(catResp.Body)
-			if err != nil {
-				sendFollowupMessage(interaction.Token, "Failed to read cat image :(")
-				return
-			}
-
-			// Send the follow-up message with the cat image
-			sendFollowupWithImage(interaction.Token, imageData)
-		}()
-
+		sendJSONResponse(w, response, http.StatusOK) // Use helper to send JSON
 		return
 	}
 
@@ -253,90 +226,6 @@ func DiscordInteractionsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	sendJSONResponse(w, response, http.StatusOK)
 	return // Important to return after handling
-}
-func sendFollowupMessage(token string, content string) {
-	url := fmt.Sprintf("https://discord.com/api/v10/webhooks/%s/%s", os.Getenv("DISCORD_APPLICATION_ID"), token)
-
-	payload := map[string]interface{}{
-		"content": content,
-	}
-
-	jsonData, err := json.Marshal(payload)
-	if err != nil {
-		fmt.Printf("Error marshaling followup message: %v\n", err)
-		return
-	}
-
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		fmt.Printf("Error sending followup message: %v\n", err)
-		return
-	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			fmt.Printf("Error closing body: %v\n", err)
-		}
-	}(resp.Body)
-}
-
-func sendFollowupWithImage(token string, imageData []byte) {
-	url := fmt.Sprintf("https://discord.com/api/v10/webhooks/%s/%s", os.Getenv("DISCORD_APPLICATION_ID"), token)
-
-	// Create a new multipart writer
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-
-	// Add the file
-	part, err := writer.CreateFormFile("files[0]", fmt.Sprintf("cat_%d.jpg", time.Now().Unix()))
-	if err != nil {
-		fmt.Printf("Error creating form file: %v\n", err)
-		return
-	}
-	_, err = part.Write(imageData)
-	if err != nil {
-		fmt.Printf("Error writing image data: %v\n", err)
-		return
-	}
-
-	// Add the payload
-	payload := map[string]interface{}{
-		"content": "Here's your cat! :cat:",
-	}
-	payloadJson, err := json.Marshal(payload)
-	if err != nil {
-		fmt.Printf("Error marshaling payload: %v\n", err)
-		return
-	}
-
-	err = writer.WriteField("payload_json", string(payloadJson))
-	if err != nil {
-		fmt.Printf("Error writing payload field: %v\n", err)
-		return
-	}
-
-	err = writer.Close()
-	if err != nil {
-		fmt.Printf("Error closing multipart writer: %v\n", err)
-		return
-	}
-
-	// Create and send the request
-	req, err := http.NewRequest("POST", url, body)
-	if err != nil {
-		fmt.Printf("Error creating request: %v\n", err)
-		return
-	}
-
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Printf("Error sending followup message: %v\n", err)
-		return
-	}
-	defer resp.Body.Close()
 }
 
 // Helper function to send JSON responses
