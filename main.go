@@ -186,7 +186,7 @@ func DiscordInteractionsHandler(w http.ResponseWriter, r *http.Request) {
 		response := DiscordInteractionResponse{
 			Type: InteractionResponseTypeChannelMessageWithSource,
 			Data: &DiscordInteractionResponseData{
-				Content: "Received your command! (Processing not implemented yet)",
+				Content: "MEOW MEOW",
 				Flags:   64, // EPHEMERAL flag
 			},
 		}
