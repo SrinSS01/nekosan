@@ -11,6 +11,14 @@ import (
 	"os"
 )
 
+type CatResponse struct {
+	Breeds []interface{} `json:"breeds"`
+	Id     string        `json:"id"`
+	Url    string        `json:"url"`
+	Width  int           `json:"width"`
+	Height int           `json:"height"`
+}
+
 // --- Configuration ---
 // Discord Application Public Key (set via environment variable DISCORD_PUBLIC_KEY)
 var discordPublicKey ed25519.PublicKey
@@ -195,15 +203,41 @@ func DiscordInteractionsHandler(w http.ResponseWriter, r *http.Request) {
 	// If it's any other type (like APPLICATION_COMMAND), handle accordingly
 	// This is where you'd add logic for Slash Commands, Button clicks, etc.
 	if interaction.Type == InteractionTypeApplicationCommand {
-		// You would typically unmarshal interaction.Data here into a specific
-		// command structure to get options etc. For now, just acknowledge.
+		// Make HTTP request to cat API
+		resp, err := http.Get("https://api.thecatapi.com/v1/images/search?size=small&mime_types=jpg&format=json&order=RANDOM")
+		if err != nil {
+			fmt.Printf("Error making HTTP request: %v\n", err)
+			return
+		}
+		defer func(Body io.ReadCloser) {
+			err := Body.Close()
+			if err != nil {
+				fmt.Printf("Error closing body: %v\n", err)
+				response := DiscordInteractionResponse{
+					Type: InteractionResponseTypeChannelMessageWithSource,
+					Data: &DiscordInteractionResponseData{
+						Content: "Error closing body: " + err.Error(),
+					},
+				}
+				sendJSONResponse(w, response, http.StatusOK)
+				return
+			}
+		}(resp.Body)
+
+		// Parse JSON response
+		var catResponse []CatResponse
+
+		if err := json.NewDecoder(resp.Body).Decode(&catResponse); err != nil {
+			fmt.Printf("Error decoding response: %v\n", err)
+			return
+		}
 
 		fmt.Println("Received APPLICATION_COMMAND interaction.")
-		// Respond with a simple ephemeral message
+		// Respond with the cat image URL
 		response := DiscordInteractionResponse{
 			Type: InteractionResponseTypeChannelMessageWithSource,
 			Data: &DiscordInteractionResponseData{
-				Content: "https://api.thecatapi.com/v1/images/search?size=small&mime_types=jpg&format=src&order=RANDOM",
+				Content: catResponse[0].Url,
 			},
 		}
 		sendJSONResponse(w, response, http.StatusOK) // Use helper to send JSON
