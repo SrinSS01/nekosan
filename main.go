@@ -38,6 +38,23 @@ const (
 	InteractionResponseTypePremiumRequired                  = 10
 )
 
+// --- Constants for Discord Message Flags ---
+const (
+	MessageFlagCrossposted                  = 1 << 0  // Message has been published to subscribed channels
+	MessageFlagIsCrosspost                  = 1 << 1  // Message originated from another channel
+	MessageFlagSuppressEmbeds               = 1 << 2  // Do not include embeds when serializing
+	MessageFlagSourceMessageDeleted         = 1 << 3  // Source message for crosspost has been deleted
+	MessageFlagUrgent                       = 1 << 4  // Message from urgent message system
+	MessageFlagHasThread                    = 1 << 5  // Message has associated thread
+	MessageFlagEphemeral                    = 1 << 6  // Message only visible to interaction invoker
+	MessageFlagLoading                      = 1 << 7  // Message is an interaction response thinking state
+	MessageFlagFailedToMentionRolesInThread = 1 << 8  // Failed to mention roles in thread
+	MessageFlagSuppressNotifications        = 1 << 12 // No push/desktop notifications
+	MessageFlagIsVoiceMessage               = 1 << 13 // Message is a voice message
+	MessageFlagHasSnapshot                  = 1 << 14 // Message has snapshot
+	MessageFlagIsComponentsV2               = 1 << 15 // Message uses components V2
+)
+
 // DiscordInteraction Struct to represent the incoming Discord Interaction payload
 // Only includes fields needed for basic handling
 type DiscordInteraction struct {
@@ -187,7 +204,7 @@ func DiscordInteractionsHandler(w http.ResponseWriter, r *http.Request) {
 			Type: InteractionResponseTypeChannelMessageWithSource,
 			Data: &DiscordInteractionResponseData{
 				Content: "MEOW MEOW",
-				Flags:   64, // EPHEMERAL flag
+				Flags:   MessageFlagEphemeral | MessageFlagUrgent, // EPHEMERAL flag
 			},
 		}
 		sendJSONResponse(w, response, http.StatusOK) // Use helper to send JSON
