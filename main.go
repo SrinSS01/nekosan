@@ -1,4 +1,4 @@
-package main
+package nekosan
 
 import (
 	"crypto/ed25519"
